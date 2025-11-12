@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running run.sh"
+
 # Create venv if it doesn't exist
 if [ ! -d ".venv" ]; then
+  echo "Creating virtual environment"
   python3 -m venv .venv
 fi
 
-# Activate it
+echo "Activating virtual environment"
 . .venv/bin/activate
 
-# Install deps
+echo "Updating pip"
 pip3 install --upgrade pip
-pip3 install -r requirements.txt
+echo "Installing requirements.txt"
+pip3 install -r ~/Documents/iot_toucher/requirements.txt
 
-# Run your app
-python3 main.py
+echo "Running main.py"
+python3 ~/Documents/iot_toucher/main.py
