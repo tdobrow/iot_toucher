@@ -2,6 +2,7 @@
 set -euo pipefail
 
 echo "Running run.sh"
+cd ~/Documents/iot_toucher/
 
 # Create venv if it doesn't exist
 if [ ! -d ".venv" ]; then
