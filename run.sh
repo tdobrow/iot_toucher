@@ -16,7 +16,7 @@ echo "Activating virtual environment"
 echo "Updating pip"
 pip3 install --upgrade pip
 echo "Installing requirements.txt"
-pip3 install -r ~/Documents/iot_toucher/requirements.txt
+pip3 install -r requirements.txt
 
 echo "Running main.py"
-python3 ~/Documents/iot_toucher/main.py
+python3 main.py

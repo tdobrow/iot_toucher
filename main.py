@@ -73,8 +73,8 @@ def build_mqtt_client():
 
     client = mqtt_connection_builder.mtls_from_path(
         endpoint=endpoint,
-        cert_filepath="~/Documents/iot_toucher/certificates/certificate.pem.crt",
-        pri_key_filepath="~/Documents/iot_toucher/certificates/private.pem.key",
+        cert_filepath="certificates/certificate.pem.crt",
+        pri_key_filepath="certificates/private.pem.key",
         client_bootstrap=client_bootstrap,
         client_id=client_id,
         clean_session=False,
