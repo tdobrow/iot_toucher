@@ -244,8 +244,10 @@ def main():
                 GPIO.cleanup()
                 break
         except Exception as e:
-            print(f"[main] setup error: {e}. Retrying soon...")
-            time.sleep(3)
+            raise RuntimeError(f"Failed to add edge detection on GPIO{TOUCH_PIN}: {e!r}")
+        # except Exception as e:
+        #     print(f"[main] setup error: {e}. Retrying soon...")
+        #     time.sleep(3)
 
 STOP_EVENT = threading.Event()
 RECONNECT_EVENT = threading.Event()
