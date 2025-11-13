@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 import threading
 import queue
+import RPi.GPIO as GPIO
+
+TOUCH_PIN = 17
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)  # most TTP223 modules idle LOW, go HIGH on touch
 
 def getenv(name, default=None):
     return os.getenv(name, default)
@@ -50,21 +56,22 @@ def on_message(current_client_id, topic, payload, dup, qos, retain, **kwargs):
         print()
 
     except Exception as e:
-        # Keep the raw payload in case decoding fails
         INCOMING.put({"_raw": repr(payload), "_error": str(e)})
 
 
-def build_message(client_id):
-    return {
+def build_message(client_id, action="test", **extra):
+    base = {
         "client_id": client_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action": "test"
+        "action": action
     }
+    if extra:
+        base.update(extra)
+    return base
 
 
 def build_mqtt_client():
     endpoint = getenv("IOT_ENDPOINT")
-    region = getenv("AWS_REGION")
     client_id = str(uuid.uuid4())
 
     event_loop_group = io.EventLoopGroup(1)
@@ -82,6 +89,30 @@ def build_mqtt_client():
     )
     return client_id, client
 
+# ---- touch listener ----
+
+def touch_callback(channel, client, topic, current_client_id):
+    try:
+        # Many touch boards output a brief HIGH pulse; confirm current level is HIGH
+        if GPIO.input(TOUCH_PIN):
+            payload = json.dumps(build_message(current_client_id, action="touch"))
+            client.publish(topic=topic, payload=payload, qos=mqtt.QoS.AT_LEAST_ONCE)
+            METRICS["total_messages_sent"] += 1
+            METRICS["last_publish_timestamp"] = datetime.now(timezone.utc).isoformat()
+            print("[touch] published")
+    except Exception as e:
+        print(f"[touch_callback] error: {e}")
+        RECONNECT_EVENT.set()
+
+def setup_touch_listener(client, topic, current_client_id):
+    GPIO.remove_event_detect(TOUCH_PIN)
+    GPIO.add_event_detect(
+        TOUCH_PIN,
+        GPIO.RISING,
+        callback=partial(touch_callback, client=client, topic=topic, current_client_id=current_client_id),
+        bouncetime=200
+    )
+
 # ---- worker loops ----
 
 def listener_loop(client, topic, current_client_id):
@@ -98,7 +129,7 @@ def listener_loop(client, topic, current_client_id):
 
     except Exception as e:
         print(f"[listener_loop] error: {e}")
-        RECONNECT_EVENT.set()  # signal main to reconnect
+        RECONNECT_EVENT.set()
 
 def publisher_loop(client, topic, current_client_id):
     try:
@@ -124,16 +155,16 @@ def metrics_loop():
 def extra_loop():
     try:
         while not STOP_EVENT.is_set() and not RECONNECT_EVENT.is_set():
-            # TODO: future work
             time.sleep(1)
     except Exception as e:
         print(f"[extra_loop] error: {e}")
         RECONNECT_EVENT.set()
 
 def start_workers(client, topic, client_id):
-    # Clear any previous signals
     STOP_EVENT.clear()
     RECONNECT_EVENT.clear()
+
+    setup_touch_listener(client, topic, client_id)
 
     threads = [
         threading.Thread(target=listener_loop, args=(client, topic, client_id), daemon=True),
@@ -147,12 +178,11 @@ def start_workers(client, topic, client_id):
 
 def stop_workers(threads, client):
     STOP_EVENT.set()
-    
-    # give loops a moment to exit
     for th in threads:
         th.join(timeout=2)
     try:
-        client.disconnect().result(timeout=5)
+        if client is not None:
+            client.disconnect().result(timeout=5)
     except Exception as e:
         print(f"[stop_workers] disconnect error (ignored): {e}")
 
@@ -163,7 +193,6 @@ def on_interrupted(connection, error, **kwargs):
 def on_resumed(connection, return_code, session_present, **kwargs):
     print(f"[connection_resumed] code={return_code} session_present={session_present}")
 
-
 def main():
     load_dotenv()
     topic = getenv("TOPIC")
@@ -171,7 +200,7 @@ def main():
     while True:
         try:
             client_id, client = build_mqtt_client()
-            
+
             client.connect().result(timeout=10)
             client.on_connection_interrupted = on_interrupted
             client.on_connection_resumed = on_resumed
@@ -181,22 +210,20 @@ def main():
 
             threads = start_workers(client, topic, client_id)
 
-            # Wait until either a reconnect is needed or user stops program
             while not RECONNECT_EVENT.is_set():
                 time.sleep(0.5)
 
             print("[main] reconnect requested")
             stop_workers(threads, client)
-            # loop continues; rebuild client and threads
 
         except KeyboardInterrupt:
             print("Stopping...")
             try:
                 stop_workers(threads if 'threads' in locals() else [], client if 'client' in locals() else None)
             finally:
+                GPIO.cleanup()
                 break
         except Exception as e:
-            # Any setup/connection error -> short backoff, retry whole cycle
             print(f"[main] setup error: {e}. Retrying soon...")
             time.sleep(3)
 
@@ -206,4 +233,4 @@ INCOMING = queue.Queue()
 METRICS = build_metrics()
 
 if __name__ == "__main__":
-    main()
+  main()

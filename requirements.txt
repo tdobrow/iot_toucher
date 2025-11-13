@@ -1,3 +1,4 @@
 awsiotsdk==1.26.0
 awscrt==0.28.1
 python-dotenv==1.0.1
+RPi.GPIO
