@@ -17,6 +17,7 @@ TOUCH_PIN = 17
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)  # most TTP223 modules idle LOW, go HIGH on touch
+GPIO.setwarnings(False)
 
 def getenv(name, default=None):
     return os.getenv(name, default)
@@ -105,13 +106,28 @@ def touch_callback(channel, client, topic, current_client_id):
         RECONNECT_EVENT.set()
 
 def setup_touch_listener(client, topic, current_client_id):
-    GPIO.remove_event_detect(TOUCH_PIN)
-    GPIO.add_event_detect(
-        TOUCH_PIN,
-        GPIO.RISING,
-        callback=partial(touch_callback, client=client, topic=topic, current_client_id=current_client_id),
-        bouncetime=200
-    )
+    try:
+        GPIO.remove_event_detect(TOUCH_PIN)
+    except Exception:
+        pass  # safe if not set yet
+    try:
+        GPIO.cleanup(TOUCH_PIN)  # fully release pin from any prior run
+    except Exception:
+        pass
+
+    # Reconfigure the pin each time before adding detection
+    GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+    try:
+        GPIO.add_event_detect(
+            TOUCH_PIN,
+            GPIO.RISING,  # many touch sensors go HIGH when touched
+            callback=partial(touch_callback, client=client, topic=topic, current_client_id=current_client_id),
+            bouncetime=200
+        )
+    except Exception as e:
+        # Make the root cause obvious in logs
+        raise RuntimeError(f"Failed to add edge detection on GPIO{TOUCH_PIN}: {e}")
 
 # ---- worker loops ----
 
@@ -180,6 +196,10 @@ def stop_workers(threads, client):
     STOP_EVENT.set()
     for th in threads:
         th.join(timeout=2)
+    try:
+        GPIO.remove_event_detect(TOUCH_PIN)
+    except Exception:
+        pass
     try:
         if client is not None:
             client.disconnect().result(timeout=5)
