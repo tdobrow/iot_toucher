@@ -15,6 +15,7 @@ GREEN_LED_PIN = 26       # GPIO 26 (physical pin 37)
 STATUS_INTERVAL_SEC = 60
 TOUCH_DEBOUNCE_MS = 200
 LED_ON_SECONDS = 10
+GREEN_BLINK_DURATION = 0.3
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -54,9 +55,9 @@ def build_mqtt_client():
     return client_id, client
 
 # --- simple synchronous blink (keep duration tiny to avoid blocking) ---
-def blink(pin, duration=0.12):
+def blink(pin):
     GPIO.output(pin, GPIO.HIGH)
-    time.sleep(duration)
+    time.sleep(GREEN_BLINK_DURATION)
     GPIO.output(pin, GPIO.LOW)
 
 def message_received(topic, payload, my_id=None, state=None, **kwargs):
@@ -67,7 +68,7 @@ def message_received(topic, payload, my_id=None, state=None, **kwargs):
 
         # Our own message echoed back: quick green blink (non-blocking enough if <= ~150ms)
         if msg.get("client_id") == my_id:
-            blink(GREEN_LED_PIN, 0.1)
+            blink(GREEN_LED_PIN)
             return
 
         # Remote message → extend white LED window
@@ -120,9 +121,6 @@ def main():
                     client.publish(topic=topic, payload=payload, qos=mqtt.QoS.AT_LEAST_ONCE)
                     print("[publish] touch")
                     last_rise = now
-
-                    # immediate local ack blink
-                    blink(GREEN_LED_PIN, 0.1)
 
                 last_state = s
 
