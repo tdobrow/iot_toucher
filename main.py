@@ -8,11 +8,12 @@ import RPi.GPIO as GPIO
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
-TOUCH_PIN = 17  # GPIO pin 17, which is pin 11 on the board
-LED_PIN = 27    # GPIO pin 27, which is pin 13 on the board
+TOUCH_PIN = 17   # GPIO 17 (physical pin 11)
+LED_PIN   = 27   # GPIO 27 (physical pin 13)
 
 TEST_INTERVAL_SEC = 10
 TOUCH_DEBOUNCE_MS = 200
+LED_ON_SECONDS = 10
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -50,23 +51,25 @@ def build_mqtt_client():
     )
     return client_id, client
 
-def message_received(topic, payload, my_id=None, **kwargs):
+def message_received(topic, payload, my_id=None, state=None, **kwargs):
+    """Handle inbound messages: if from a *different* device and action='touch',
+    extend LED timer to now + LED_ON_SECONDS."""
     try:
         text = payload.decode("utf-8")
         msg = json.loads(text)
-        # Ignore messages sent by *this* device
-        if msg.get("client_id") == my_id:
-            # Optional: uncomment to see skips
-            # print(f"[msg] Skipping own message ({my_id})")
-            return
 
-        print(f"[msg] Received on {topic}: {json.dumps(msg, indent=2)}")
+        # ignore our own messages
+        if msg.get("client_id") == my_id:
+            return
 
         action = msg.get("action")
         if action == "touch":
-            GPIO.output(LED_PIN, GPIO.HIGH)
-        else:  # any other message will reset it
-            GPIO.output(LED_PIN, GPIO.LOW)
+            # extend/refresh the LED window
+            state["led_end_at"] = time.monotonic() + LED_ON_SECONDS
+            print(f"[msg] touch from other client -> LED until {state['led_end_at']:.3f}")
+        else:
+            # ignore other actions for LED timing (you can change this if desired)
+            pass
 
     except Exception as e:
         print(f"[msg] decode error: {e}")
@@ -81,11 +84,14 @@ def main():
             client.connect().result(timeout=10)
             print(f"[connect] OK client_id={client_id}")
 
-            # subscribe (pass our client_id so we can ignore our own messages)
+            # shared mutable state for LED timer
+            state = {"led_end_at": 0.0}
+
+            # subscribe and pass our client_id + state for LED timing
             sub_future, _ = client.subscribe(
                 topic=topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
-                callback=partial(message_received, my_id=client_id)
+                callback=partial(message_received, my_id=client_id, state=state)
             )
             sub_future.result()
             print(f"[subscribe] Listening on topic '{topic}'")
@@ -104,7 +110,7 @@ def main():
                     print("[publish] test")
                     next_test_at += TEST_INTERVAL_SEC
 
-                # touch rising edge
+                # local touch rising edge -> publish
                 s = GPIO.input(TOUCH_PIN)
                 if last_state == 0 and s == 1 and (now - last_rise) * 1000.0 > TOUCH_DEBOUNCE_MS:
                     payload = json.dumps(build_message(client_id, action="touch"))
@@ -113,7 +119,13 @@ def main():
                     last_rise = now
                 last_state = s
 
-                time.sleep(0.01)
+                # LED timer check (on while timer active, off otherwise)
+                if now < state["led_end_at"]:
+                    GPIO.output(LED_PIN, GPIO.HIGH)
+                else:
+                    GPIO.output(LED_PIN, GPIO.LOW)
+
+                time.sleep(0.05)  # ~50ms tick is snappy but light on CPU
 
         except Exception as e:
             print(f"[main] error: {e}. Restarting soon...")
