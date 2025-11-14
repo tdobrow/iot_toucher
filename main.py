@@ -2,15 +2,14 @@
 
 import os, json, time, uuid
 from datetime import datetime, timezone
-from functools import partial
 from dotenv import load_dotenv
 import RPi.GPIO as GPIO
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
-TOUCH_PIN = 17           # GPIO 17 (physical pin 11)
-WHITE_LED_PIN = 27       # GPIO 27 (physical pin 13)
-GREEN_LED_PIN = 26       # GPIO 26 (physical pin 37)
+TOUCH_PIN = 17            # GPIO 17 (physical pin 11)
+WHITE_LED_PIN = 27        # GPIO 27 (physical pin 13)
+GREEN_LED_PIN = 26        # GPIO 26 (physical pin 37)
 
 STATUS_INTERVAL_SEC = 60
 TOUCH_DEBOUNCE_MS = 200
@@ -22,6 +21,10 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 GPIO.setup(WHITE_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(GREEN_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
+
+# --- globals set in main() ---
+MY_ID = None
+STATE = {"led_end_at": 0.0}
 
 def getenv(name, default=None):
     return os.getenv(name, default)
@@ -54,54 +57,52 @@ def build_mqtt_client():
     )
     return client_id, client
 
-# --- simple synchronous blink (keep duration tiny to avoid blocking) ---
 def blink(pin):
     GPIO.output(pin, GPIO.HIGH)
     time.sleep(GREEN_BLINK_DURATION)
     GPIO.output(pin, GPIO.LOW)
 
-def message_received(my_id, state, topic, payload, dup, qos, retain, **kwargs):
+# ---- simplified message handling ----
+def handle_incoming(payload_bytes):
+    global MY_ID, STATE
     try:
-        text = payload.decode("utf-8")
+        text = payload_bytes.decode("utf-8")
         msg = json.loads(text)
-
-        msg_id = msg.get("client_id")
+        sender = msg.get("client_id")
         action = msg.get("action")
 
-        # Debug (optional): see who we think sent it
-        # print(f"[msg] from={msg_id} my_id={my_id} action={action}")
-
-        if msg_id == my_id:
-            # Own echo: blink green only, never touch white
-            if action == "touch":
-                blink(GREEN_LED_PIN)
-            return
-
-        # Remote touch: extend white LED timer
         if action == "touch":
-            state["led_end_at"] = time.monotonic() + LED_ON_SECONDS
-            print(f"[msg] remote touch → white until {state['led_end_at']:.3f}")
+            if sender == MY_ID:
+                blink(GREEN_LED_PIN)
+            else:
+                STATE["led_end_at"] = time.monotonic() + LED_ON_SECONDS
 
     except Exception as e:
         print(f"[msg] decode error: {e}")
 
+# awscrt callback signature; we ignore everything except payload
+def on_message(topic, payload, dup, qos, retain, **kwargs):
+    handle_incoming(payload)
+
 def main():
+    global MY_ID, STATE
     load_dotenv()
     topic = getenv("TOPIC")
 
     while True:
         try:
             client_id, client = build_mqtt_client()
+            MY_ID = client_id
+            STATE = {"led_end_at": 0.0}
+
             client.connect().result(timeout=10)
             print(f"[connect] OK client_id={client_id}")
 
-            # WHITE timer state only
-            state = {"led_end_at": 0.0}
-
+            # subscribe with a simple wrapper that passes only payload
             sub_future, _ = client.subscribe(
                 topic=topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
-                callback=partial(message_received, client_id, state)
+                callback=on_message
             )
             sub_future.result()
             print(f"[subscribe] Listening on topic '{topic}'")
@@ -120,7 +121,7 @@ def main():
                     print("[publish] status message")
                     next_status_message_at += STATUS_INTERVAL_SEC
 
-                # local touch rising edge → publish + synchronous green blink
+                # local touch rising edge -> publish + local green blink
                 s = GPIO.input(TOUCH_PIN)
                 if last_state == 0 and s == 1 and (now - last_rise) * 1000.0 > TOUCH_DEBOUNCE_MS:
                     payload = json.dumps(build_message(client_id, action="touch"))
@@ -130,8 +131,8 @@ def main():
 
                 last_state = s
 
-                # WHITE LED: on while remote-touch window active
-                GPIO.output(WHITE_LED_PIN, GPIO.HIGH if now < state["led_end_at"] else GPIO.LOW)
+                # WHITE LED only depends on remote-touch timer
+                GPIO.output(WHITE_LED_PIN, GPIO.HIGH if now < STATE["led_end_at"] else GPIO.LOW)
 
                 time.sleep(0.05)
 
