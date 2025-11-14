@@ -79,8 +79,10 @@ def handle_incoming(payload_bytes):
 
         if action == "touch":
             if sender == MY_ID:
+                print("IT WAS MY MESSAGE")
                 blink(GREEN_LED_PIN)
             else:
+                print("IT WAS SOME OTHER MESSAGE")
                 STATE["led_end_at"] = time.monotonic() + LED_ON_SECONDS
 
     except Exception as e:
