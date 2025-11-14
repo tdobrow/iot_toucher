@@ -16,9 +16,7 @@ TOUCH_DEBOUNCE_MS = 200
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-GPIO.setup(LED_PIN, GPIO.OUT)
-
-GPIO.output(LED_PIN, GPIO.LOW)
+GPIO.setup(LED_PIN, GPIO.OUT, initial=GPIO.HIGH)
 
 def getenv(name, default=None):
     return os.getenv(name, default)
