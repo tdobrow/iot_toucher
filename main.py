@@ -68,7 +68,8 @@ def message_received(topic, payload, my_id=None, state=None, **kwargs):
 
         # Our own message echoed back: quick green blink (non-blocking enough if <= ~150ms)
         if msg.get("client_id") == my_id:
-            blink(GREEN_LED_PIN)
+            if msg.get("action") == "touch":
+                blink(GREEN_LED_PIN)
             return
 
         # Remote message → extend white LED window
