@@ -71,6 +71,12 @@ def handle_incoming(payload_bytes):
         sender = msg.get("client_id")
         action = msg.get("action")
 
+        print("TESTING HANDLE INCOMING")
+        print(msg)
+        print(sender)
+        print(action)
+        print(MY_ID)
+
         if action == "touch":
             if sender == MY_ID:
                 blink(GREEN_LED_PIN)
@@ -82,6 +88,10 @@ def handle_incoming(payload_bytes):
 
 # awscrt callback signature; we ignore everything except payload
 def on_message(topic, payload, dup, qos, retain, **kwargs):
+    print("TESTING ON MESSAGE")
+    print(topic)
+    print(payload)
+
     handle_incoming(payload)
 
 def main():
