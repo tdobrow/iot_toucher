@@ -16,7 +16,7 @@ TOUCH_DEBOUNCE_MS = 200
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-GPIO.setup(LED_PIN, GPIO.OUT, initial=GPIO.HIGH)
+GPIO.setup(LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 
 def getenv(name, default=None):
     return os.getenv(name, default)
@@ -59,9 +59,9 @@ def message_received(topic, payload, **kwargs):
 
         action = msg.get("action")
         if action == "touch":
-            GPIO.output(LED_PIN, GPIO.LOW)
-        else: # any other message will reset it
             GPIO.output(LED_PIN, GPIO.HIGH)
+        else: # any other message will reset it
+            GPIO.output(LED_PIN, GPIO.LOW)
 
     except Exception as e:
         print(f"[msg] decode error: {e}")
