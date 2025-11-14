@@ -7,13 +7,18 @@ import RPi.GPIO as GPIO
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
-TOUCH_PIN = 17
+TOUCH_PIN = 17 # GPIO 17
+LED_PIN = 17 # Pin 17, which is a voltage pin
+
 TEST_INTERVAL_SEC = 10
 TOUCH_DEBOUNCE_MS = 200
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(LED_PIN, GPIO.OUT)
+
+GPIO.output(LED_PIN, GPIO.LOW)
 
 def getenv(name, default=None):
     return os.getenv(name, default)
