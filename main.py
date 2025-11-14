@@ -2,6 +2,7 @@
 
 import os, json, time, uuid
 from datetime import datetime, timezone
+from functools import partial
 from dotenv import load_dotenv
 import RPi.GPIO as GPIO
 from awscrt import io, mqtt
@@ -49,23 +50,26 @@ def build_mqtt_client():
     )
     return client_id, client
 
-def message_received(topic, payload, **kwargs):
-    # TODO: only accept messages from different device
-    # TODO: have LED stay on for a period of time, not just until next message
+def message_received(topic, payload, my_id=None, **kwargs):
     try:
         text = payload.decode("utf-8")
         msg = json.loads(text)
+        # Ignore messages sent by *this* device
+        if msg.get("client_id") == my_id:
+            # Optional: uncomment to see skips
+            # print(f"[msg] Skipping own message ({my_id})")
+            return
+
         print(f"[msg] Received on {topic}: {json.dumps(msg, indent=2)}")
 
         action = msg.get("action")
         if action == "touch":
             GPIO.output(LED_PIN, GPIO.HIGH)
-        else: # any other message will reset it
+        else:  # any other message will reset it
             GPIO.output(LED_PIN, GPIO.LOW)
 
     except Exception as e:
         print(f"[msg] decode error: {e}")
-
 
 def main():
     load_dotenv()
@@ -77,11 +81,11 @@ def main():
             client.connect().result(timeout=10)
             print(f"[connect] OK client_id={client_id}")
 
-            # subscribe
+            # subscribe (pass our client_id so we can ignore our own messages)
             sub_future, _ = client.subscribe(
                 topic=topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
-                callback=message_received
+                callback=partial(message_received, my_id=client_id)
             )
             sub_future.result()
             print(f"[subscribe] Listening on topic '{topic}'")
