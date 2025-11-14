@@ -8,17 +8,20 @@ import RPi.GPIO as GPIO
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
-TOUCH_PIN = 17   # GPIO 17 (physical pin 11)
-LED_PIN   = 27   # GPIO 27 (physical pin 13)
+TOUCH_PIN = 17          # GPIO 17 (physical pin 11)
+WHITE_LED_PIN = 27      # GPIO 27 (physical pin 13)
+GREEN_LED_PIN = 26      # GPIO 26 (physical pin 37)
 
-TEST_INTERVAL_SEC = 10
+STATUS_INTERVAL_SEC = 60
 TOUCH_DEBOUNCE_MS = 200
 LED_ON_SECONDS = 10
+GREEN_BLINK_SECONDS = 1.5
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TOUCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-GPIO.setup(LED_PIN, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(WHITE_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(GREEN_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 
 def getenv(name, default=None):
     return os.getenv(name, default)
@@ -52,24 +55,22 @@ def build_mqtt_client():
     return client_id, client
 
 def message_received(topic, payload, my_id=None, state=None, **kwargs):
-    """Handle inbound messages: if from a *different* device and action='touch',
-    extend LED timer to now + LED_ON_SECONDS."""
     try:
         text = payload.decode("utf-8")
         msg = json.loads(text)
 
-        # ignore our own messages
+        now = time.monotonic()
+
+        # Our own message came back (echo) → blink green briefly, do NOT touch white here
         if msg.get("client_id") == my_id:
+            state["green_end_at"] = now + GREEN_BLINK_SECONDS
             return
 
-        action = msg.get("action")
-        if action == "touch":
-            # extend/refresh the LED window
-            state["led_end_at"] = time.monotonic() + LED_ON_SECONDS
-            print(f"[msg] touch from other client -> LED until {state['led_end_at']:.3f}")
-        else:
-            # ignore other actions for LED timing (you can change this if desired)
-            pass
+        # Remote message
+        if msg.get("action") == "touch":
+            # extend white LED timer for remote touch
+            state["led_end_at"] = now + LED_ON_SECONDS
+            print(f"[msg] remote touch → white until {state['led_end_at']:.3f}")
 
     except Exception as e:
         print(f"[msg] decode error: {e}")
@@ -84,10 +85,9 @@ def main():
             client.connect().result(timeout=10)
             print(f"[connect] OK client_id={client_id}")
 
-            # shared mutable state for LED timer
-            state = {"led_end_at": 0.0}
+            # timers for LEDs
+            state = {"led_end_at": 0.0, "green_end_at": 0.0}
 
-            # subscribe and pass our client_id + state for LED timing
             sub_future, _ = client.subscribe(
                 topic=topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
@@ -96,36 +96,40 @@ def main():
             sub_future.result()
             print(f"[subscribe] Listening on topic '{topic}'")
 
-            next_test_at = time.monotonic() + TEST_INTERVAL_SEC
+            next_status_message_at = time.monotonic() + STATUS_INTERVAL_SEC
             last_state = GPIO.input(TOUCH_PIN)
             last_rise = 0.0
 
             while True:
                 now = time.monotonic()
 
-                # periodic test event
-                if now >= next_test_at:
-                    payload = json.dumps(build_message(client_id, action="test"))
+                # periodic status
+                if now >= next_status_message_at:
+                    payload = json.dumps(build_message(client_id, action="status"))
                     client.publish(topic=topic, payload=payload, qos=mqtt.QoS.AT_LEAST_ONCE)
-                    print("[publish] test")
-                    next_test_at += TEST_INTERVAL_SEC
+                    print("[publish] status message")
+                    next_status_message_at += STATUS_INTERVAL_SEC
 
-                # local touch rising edge -> publish
+                # local touch rising edge → publish AND blink green
                 s = GPIO.input(TOUCH_PIN)
                 if last_state == 0 and s == 1 and (now - last_rise) * 1000.0 > TOUCH_DEBOUNCE_MS:
                     payload = json.dumps(build_message(client_id, action="touch"))
                     client.publish(topic=topic, payload=payload, qos=mqtt.QoS.AT_LEAST_ONCE)
                     print("[publish] touch")
                     last_rise = now
+
+                    # local immediate ack blink on green
+                    state["green_end_at"] = now + GREEN_BLINK_SECONDS
+
                 last_state = s
 
-                # LED timer check (on while timer active, off otherwise)
-                if now < state["led_end_at"]:
-                    GPIO.output(LED_PIN, GPIO.HIGH)
-                else:
-                    GPIO.output(LED_PIN, GPIO.LOW)
+                # WHITE LED: on while remote-touch window active
+                GPIO.output(WHITE_LED_PIN, GPIO.HIGH if now < state["led_end_at"] else GPIO.LOW)
 
-                time.sleep(0.05)  # ~50ms tick is snappy but light on CPU
+                # GREEN LED: one-shot blink window
+                GPIO.output(GREEN_LED_PIN, GPIO.HIGH if now < state["green_end_at"] else GPIO.LOW)
+
+                time.sleep(0.05)
 
         except Exception as e:
             print(f"[main] error: {e}. Restarting soon...")
