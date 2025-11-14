@@ -7,8 +7,8 @@ import RPi.GPIO as GPIO
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
 
-TOUCH_PIN = 17 # GPIO 17
-LED_PIN = 17 # Pin 17, which is a voltage pin
+TOUCH_PIN = 17  # GPIO pin 17, which is pin 11 on the board
+LED_PIN = 27    # GPIO pin 27, which is pin 13 on the board
 
 TEST_INTERVAL_SEC = 10
 TOUCH_DEBOUNCE_MS = 200
@@ -49,6 +49,24 @@ def build_mqtt_client():
     )
     return client_id, client
 
+def message_received(topic, payload, **kwargs):
+    # TODO: only accept messages from different device
+    # TODO: have LED stay on for a period of time, not just until next message
+    try:
+        text = payload.decode("utf-8")
+        msg = json.loads(text)
+        print(f"[msg] Received on {topic}: {json.dumps(msg, indent=2)}")
+
+        action = msg.get("action")
+        if action == "touch":
+            GPIO.output(LED_PIN, GPIO.LOW)
+        else: # any other message will reset it
+            GPIO.output(LED_PIN, GPIO.HIGH)
+
+    except Exception as e:
+        print(f"[msg] decode error: {e}")
+
+
 def main():
     load_dotenv()
     topic = getenv("TOPIC")
@@ -59,7 +77,15 @@ def main():
             client.connect().result(timeout=10)
             print(f"[connect] OK client_id={client_id}")
 
-            # timers/state
+            # subscribe
+            sub_future, _ = client.subscribe(
+                topic=topic,
+                qos=mqtt.QoS.AT_LEAST_ONCE,
+                callback=message_received
+            )
+            sub_future.result()
+            print(f"[subscribe] Listening on topic '{topic}'")
+
             next_test_at = time.monotonic() + TEST_INTERVAL_SEC
             last_state = GPIO.input(TOUCH_PIN)
             last_rise = 0.0
@@ -74,7 +100,7 @@ def main():
                     print("[publish] test")
                     next_test_at += TEST_INTERVAL_SEC
 
-                # touch rising edge with software debounce
+                # touch rising edge
                 s = GPIO.input(TOUCH_PIN)
                 if last_state == 0 and s == 1 and (now - last_rise) * 1000.0 > TOUCH_DEBOUNCE_MS:
                     payload = json.dumps(build_message(client_id, action="touch"))
@@ -83,13 +109,12 @@ def main():
                     last_rise = now
                 last_state = s
 
-                time.sleep(0.01)  # ~10ms tick
+                time.sleep(0.01)
 
         except Exception as e:
             print(f"[main] error: {e}. Restarting soon...")
             try:
-                # Best-effort disconnect; if it fails, ignore and retry from top
-                client.disconnect().result(timeout=3)  # 'client' may not exist if early failure; that's fine
+                client.disconnect().result(timeout=3)
             except Exception:
                 pass
             time.sleep(2)
