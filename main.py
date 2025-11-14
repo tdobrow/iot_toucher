@@ -60,20 +60,25 @@ def blink(pin):
     time.sleep(GREEN_BLINK_DURATION)
     GPIO.output(pin, GPIO.LOW)
 
-def message_received(topic, payload, my_id=None, state=None, **kwargs):
-    """Extend WHITE timer for remote touches. Optionally blink green on own echo."""
+def message_received(my_id, state, topic, payload, dup, qos, retain, **kwargs):
     try:
         text = payload.decode("utf-8")
         msg = json.loads(text)
 
-        # Our own message echoed back: quick green blink (non-blocking enough if <= ~150ms)
-        if msg.get("client_id") == my_id:
-            if msg.get("action") == "touch":
+        msg_id = msg.get("client_id")
+        action = msg.get("action")
+
+        # Debug (optional): see who we think sent it
+        # print(f"[msg] from={msg_id} my_id={my_id} action={action}")
+
+        if msg_id == my_id:
+            # Own echo: blink green only, never touch white
+            if action == "touch":
                 blink(GREEN_LED_PIN)
             return
 
-        # Remote message → extend white LED window
-        if msg.get("action") == "touch":
+        # Remote touch: extend white LED timer
+        if action == "touch":
             state["led_end_at"] = time.monotonic() + LED_ON_SECONDS
             print(f"[msg] remote touch → white until {state['led_end_at']:.3f}")
 
@@ -96,7 +101,7 @@ def main():
             sub_future, _ = client.subscribe(
                 topic=topic,
                 qos=mqtt.QoS.AT_LEAST_ONCE,
-                callback=partial(message_received, my_id=client_id, state=state)
+                callback=partial(message_received, client_id, state)
             )
             sub_future.result()
             print(f"[subscribe] Listening on topic '{topic}'")
