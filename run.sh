@@ -4,7 +4,10 @@ set -euo pipefail
 echo "Running run.sh"
 cd ~/Documents/iot_toucher/
 
-# Create venv if it doesn't exist
+git pull
+
+# Todo: Build and save wifi settings
+
 if [ ! -d ".venv" ]; then
   echo "Creating virtual environment"
   python3 -m venv .venv
