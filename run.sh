@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "Running run.sh"
-cd ~/Documents/stoplights/
+cd ~/Documents/iot_toucher/
 
 git pull
 
