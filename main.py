@@ -18,7 +18,7 @@ GPIO.setup(GREEN_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(YELLOW_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(RED_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 
-GPIO.setup(PIR_PIN, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(PIR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 def blink(pin):
     GPIO.output(pin, GPIO.HIGH)
@@ -31,13 +31,17 @@ def main():
     blink(YELLOW_LED_PIN)
     blink(RED_LED_PIN)
 
+    print("Warming up PIR (they often need ~30–60s)...")
+    time.sleep(30)
+
     while True:
-        if GPIO.input(17):
+        if GPIO.input(PIR_PIN):
             blink(GREEN_LED_PIN)
             blink(YELLOW_LED_PIN)
             blink(RED_LED_PIN)
         else:
             print("No motion")
+            time.sleep(0.5)
         
 
 
