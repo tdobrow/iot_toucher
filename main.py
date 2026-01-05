@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-import json, time, uuid
-from datetime import datetime, timezone
+import time
 import RPi.GPIO as GPIO
 
-GREEN_LED_PIN = 4            # GPIO 17 (physical pin 11)
-YELLOW_LED_PIN = 27        # GPIO 27 (physical pin 13)
-RED_LED_PIN = 24        # GPIO 26 (physical pin 37)
+GREEN_LED_PIN = 4     # BCM 4
+YELLOW_LED_PIN = 27   # BCM 27
+RED_LED_PIN = 24      # BCM 24
 
-PIR_PIN = 17
+PIR_PIN = 17          # BCM 17
 
 ON_DURATION = 2.0
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
+
 GPIO.setup(GREEN_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(YELLOW_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(RED_LED_PIN, GPIO.OUT, initial=GPIO.LOW)
@@ -26,7 +26,6 @@ def blink(pin):
     GPIO.output(pin, GPIO.LOW)
 
 def main():
-    # Signal that things are up and running
     blink(GREEN_LED_PIN)
     blink(YELLOW_LED_PIN)
     blink(RED_LED_PIN)
@@ -34,16 +33,19 @@ def main():
     print("Warming up PIR (they often need ~30–60s)...")
     time.sleep(30)
 
-    while True:
-        if GPIO.input(PIR_PIN):
-            blink(GREEN_LED_PIN)
-            blink(YELLOW_LED_PIN)
-            blink(RED_LED_PIN)
-        else:
-            print("No motion")
-            time.sleep(0.5)
-        
-
+    print("Ready. Move in front of the sensor.")
+    try:
+        while True:
+            if GPIO.input(PIR_PIN):
+                print("Motion!")
+                blink(GREEN_LED_PIN)
+                blink(YELLOW_LED_PIN)
+                blink(RED_LED_PIN)
+            else:
+                print("No motion")
+                time.sleep(0.5)
+    finally:
+        GPIO.cleanup()
 
 if __name__ == "__main__":
     main()
