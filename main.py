@@ -14,7 +14,7 @@ GPIO.cleanup()  # clear any leftovers from previous runs
 
 GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(PUSH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(PUSH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 def read_state():
     return GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
@@ -28,7 +28,7 @@ def main():
         while True:
             a, b = read_state()
 
-            if GPIO.input(PUSH_PIN):
+            if GPIO.input(PUSH_PIN) == GPIO.LOW:
                 print("PUSH")
 
             # Only react when A changes (this is our "event")
