@@ -12,7 +12,7 @@ GPIO.cleanup()  # clear any previous edge detection
 GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-def rotary_callback(channel):
+def rotary_callback():
     a = GPIO.input(ROT_A_PIN)
     b = GPIO.input(ROT_B_PIN)
 
