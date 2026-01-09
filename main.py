@@ -2,35 +2,48 @@
 import RPi.GPIO as GPIO
 import time
 
-ROT_A_PIN = 22
-ROT_B_PIN = 17
+# Use pins that aren't GPIO 4
+ROT_A_PIN = 17
+ROT_B_PIN = 23
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
-GPIO.cleanup()  # clear any previous edge detection
+GPIO.cleanup()  # clear any leftovers from previous runs
 
 GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-def rotary_callback():
-    a = GPIO.input(ROT_A_PIN)
-    b = GPIO.input(ROT_B_PIN)
+def read_state():
+    return GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
 
-    # Simple direction guess:
-    if a == b:
-        print("RIGHT")
-    else:
-        print("LEFT")
+def main():
+    print("Polling rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
 
-GPIO.add_event_detect(ROT_A_PIN, GPIO.BOTH,
-                      callback=rotary_callback, bouncetime=2)
+    last_a, last_b = read_state()
 
-print("Listening for rotation on A/B (23/24). Ctrl+C to exit.")
+    try:
+        while True:
+            a, b = read_state()
 
-try:
-    while True:
-        time.sleep(0.1)
-except KeyboardInterrupt:
-    pass
-finally:
-    GPIO.cleanup()
+            # Only react when A changes (this is our "event")
+            if a != last_a:
+                # We usually look on the falling edge (a goes from 1 -> 0)
+                if a == 0:
+                    # Simple quadrature rule:
+                    # If B != A on that edge → one direction, else → the other
+                    if b == 1:
+                        print("RIGHT")
+                    else:
+                        print("LEFT")
+
+                last_a, last_b = a, b
+
+            time.sleep(0.001)  # small delay to avoid hammering CPU
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
