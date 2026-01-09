@@ -14,7 +14,9 @@ GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 def read_state():
-    return GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
+    state = GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
+    print("Rotary State: ${state}")
+    return state
 
 def main():
     print("Polling rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
