@@ -2,8 +2,8 @@
 import RPi.GPIO as GPIO
 import time
 
-ROT_A_PIN = 23
-ROT_B_PIN = 24
+ROT_A_PIN = 4
+ROT_B_PIN = 17
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
