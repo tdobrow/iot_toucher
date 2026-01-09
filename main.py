@@ -1,44 +1,33 @@
-import time
+#!/usr/bin/env python3
 import RPi.GPIO as GPIO
+import time
 
-# BCM pin numbers
-ROT_A_PIN = 4   # encoder A
-ROT_B_PIN = 17   # encoder B
+ROT_A_PIN = 23
+ROT_B_PIN = 24
 
-GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+GPIO.cleanup()  # clear any previous edge detection
 
-# Use internal pull-ups so pins sit at 3.3V when switches open
 GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-last_encoded = 0  # last A/B state
-
 def rotary_callback(channel):
-    global last_encoded
+    a = GPIO.input(ROT_A_PIN)
+    b = GPIO.input(ROT_B_PIN)
 
-    # Read current A/B states
-    msb = GPIO.input(ROT_A_PIN)  # most significant bit
-    lsb = GPIO.input(ROT_B_PIN)  # least significant bit
-    encoded = (msb << 1) | lsb
-
-    combined = (last_encoded << 2) | encoded
-
-    # These patterns mean one direction…
-    if combined in (0b1101, 0b0100, 0b0010, 0b1011):
+    # Simple direction guess:
+    if a == b:
         print("RIGHT")
-    # …and these mean the other
-    elif combined in (0b1110, 0b0111, 0b0001, 0b1000):
+    else:
         print("LEFT")
 
-    last_encoded = encoded
+GPIO.add_event_detect(ROT_A_PIN, GPIO.BOTH,
+                      callback=rotary_callback, bouncetime=2)
 
-# Fire callback when either channel changes
-GPIO.add_event_detect(ROT_A_PIN, GPIO.BOTH, callback=rotary_callback)
-GPIO.add_event_detect(ROT_B_PIN, GPIO.BOTH, callback=rotary_callback)
+print("Listening for rotation on A/B (23/24). Ctrl+C to exit.")
 
 try:
-    print("Listening for encoder turns… Ctrl+C to exit.")
     while True:
         time.sleep(0.1)
 except KeyboardInterrupt:
