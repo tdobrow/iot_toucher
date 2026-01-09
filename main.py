@@ -14,7 +14,7 @@ GPIO.cleanup()  # clear any leftovers from previous runs
 
 GPIO.setup(ROT_A_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(ROT_B_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(PUSH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(PUSH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 def read_state():
     return GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
