@@ -23,13 +23,18 @@ def main():
     print("Polling rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
 
     last_a, last_b = read_state()
+    is_pushed = False
 
     try:
         while True:
             a, b = read_state()
 
             if GPIO.input(PUSH_PIN) == GPIO.LOW:
-                print("PUSH")
+                if not is_pushed:
+                    print("PUSH")
+                    is_pushed = True
+            else:
+                is_pushed = False
 
             # Only react when A changes (this is our "event")
             if a != last_a:
