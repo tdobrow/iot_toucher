@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import RPi.GPIO as GPIO
 import time
+import os
 
 # Use pins that aren't GPIO 4
 ROT_A_PIN = 17
@@ -30,15 +31,26 @@ def read_state(spinner_number):
         return GPIO.input(ROT_A_PIN), GPIO.input(ROT_B_PIN)
     if spinner_number == 2:
         return GPIO.input(ROT_A_PIN_TWO), GPIO.input(ROT_B_PIN_TWO)
+    
+def initialize_board(size):
+    board = []
+    for i in range(size):
+        board.append([])
+        for _j in range(size):
+            board[i].append(0)
+    return board
 
 def main():
     print("Polling first rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
     print("Polling second rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN_TWO, ROT_B_PIN_TWO))
 
+    board = initialize_board(5)
+
     last_a_one, last_b_one = read_state(1)
     last_a_two, last_b_two = read_state(2)
     is_pushed_one = False
     is_pushed_two = False
+    state_changed = False
 
     try:
         while True:
@@ -49,6 +61,7 @@ def main():
                 if not is_pushed_one:
                     print("ONE PUSHED")
                     is_pushed_one = True
+                    state_changed = True
             else:
                 is_pushed_one = False
 
@@ -56,6 +69,7 @@ def main():
                 if not is_pushed_two:
                     print("TWO PUSHED")
                     is_pushed_two = True
+                    state_changed = True
             else:
                 is_pushed_two = False
 
@@ -67,8 +81,10 @@ def main():
                     # If B != A on that edge → one direction, else → the other
                     if b_one == 1:
                         print("ONE RIGHT")
+                        state_changed = True
                     else:
                         print("ONE LEFT")
+                        state_changed = True
 
                 last_a_one, last_b_one = a_one, b_one
 
@@ -80,12 +96,17 @@ def main():
                     # If B != A on that edge → one direction, else → the other
                     if b_two == 1:
                         print("TWO RIGHT")
+                        state_changed = True
                     else:
                         print("TWO LEFT")
+                        state_changed = True
 
                 last_a_two, last_b_two = a_two, b_two
 
-            time.sleep(0.01)  # small delay to avoid hammering CPU
+            time.sleep(0.1)  # small delay to avoid hammering CPU
+            if (state_changed):
+                os.system('clear')
+                print(board)
 
     except KeyboardInterrupt:
         pass
