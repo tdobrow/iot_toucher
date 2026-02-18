@@ -91,6 +91,12 @@ def main():
             else:
                 is_pushed_two = False
 
+            if (is_pushed_one and is_pushed_two):
+                # reset game state
+                board = initialize_board(board_size)
+                current_row = 0
+                current_col = 0
+
             # Only react when A changes (this is our "event")
             if a_one != last_a_one:
                 # We usually look on the falling edge (a goes from 1 -> 0)
