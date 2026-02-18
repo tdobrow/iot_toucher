@@ -133,7 +133,7 @@ def main():
 
                 last_a_two, last_b_two = a_two, b_two
 
-            time.sleep(0.1)  # small delay to avoid hammering CPU
+            time.sleep(0.01)  # small delay to avoid hammering CPU
             if (state_changed):
                 os.system('clear')
                 print_board(board)
