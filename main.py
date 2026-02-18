@@ -42,7 +42,11 @@ def initialize_board(size):
     board[0][0] = "X"
     return board
 
-def update_board(board, current_row, current_col):
+def update_board(board, size, current_row, current_col):
+    for i in range(size):
+        for j in range(size):
+            if (board[i][j] == 'X'):
+                board[i][j] = 'x'
     board[current_row][current_col] = 'X'
 
     return board
@@ -99,14 +103,14 @@ def main():
                         current_col += 1
                         if (current_col > (board_size - 1)):
                             current_col = (board_size - 1)
-                        update_board(board, current_row, current_col)
+                        update_board(board, board_size, current_row, current_col)
                     else:
                         print("ONE LEFT")
                         state_changed = True
                         current_col -= 1
                         if (current_col < 0):
                             current_col = 0
-                        update_board(board, current_row, current_col)
+                        update_board(board, board_size, current_row, current_col)
 
                 last_a_one, last_b_one = a_one, b_one
 
@@ -122,14 +126,14 @@ def main():
                         current_row += 1
                         if (current_row > (board_size - 1)):
                             current_row = (board_size - 1)
-                        update_board(board, current_row, current_col)
+                        update_board(board, board_size, current_row, current_col)
                     else:
                         print("TWO LEFT")
                         state_changed = True
                         current_row -= 1
                         if (current_row < 0):
                             current_row = 0
-                        update_board(board, current_row, current_col)
+                        update_board(board, board_size, current_row, current_col)
 
                 last_a_two, last_b_two = a_two, b_two
 
@@ -137,6 +141,7 @@ def main():
             if (state_changed):
                 os.system('clear')
                 print_board(board)
+                state_changed = False
 
     except KeyboardInterrupt:
         pass
