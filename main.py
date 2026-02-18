@@ -37,14 +37,28 @@ def initialize_board(size):
     for i in range(size):
         board.append([])
         for _j in range(size):
-            board[i].append(0)
+            board[i].append('o')
+    
+    board[0][0] = "X"
     return board
+
+def update_board(board, current_row, current_col):
+    board[current_row][current_col] = 'X'
+
+    return board
+
+def print_board(board):
+    for row in board:
+        print(row)
 
 def main():
     print("Polling first rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
     print("Polling second rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN_TWO, ROT_B_PIN_TWO))
 
-    board = initialize_board(5)
+    board_size = 10
+    board = initialize_board(board_size)
+    current_row = 0
+    current_col = 0
 
     last_a_one, last_b_one = read_state(1)
     last_a_two, last_b_two = read_state(2)
@@ -82,9 +96,17 @@ def main():
                     if b_one == 1:
                         print("ONE RIGHT")
                         state_changed = True
+                        current_col += 1
+                        if (current_col > (board_size - 1)):
+                            current_col = (board_size - 1)
+                        update_board(board, current_row, current_col)
                     else:
                         print("ONE LEFT")
                         state_changed = True
+                        current_col -= 1
+                        if (current_col < 0):
+                            current_col = 0
+                        update_board(board, current_row, current_col)
 
                 last_a_one, last_b_one = a_one, b_one
 
@@ -97,16 +119,24 @@ def main():
                     if b_two == 1:
                         print("TWO RIGHT")
                         state_changed = True
+                        current_row += 1
+                        if (current_row > (board_size - 1)):
+                            current_row = (board_size - 1)
+                        update_board(board, current_row, current_col)
                     else:
                         print("TWO LEFT")
                         state_changed = True
+                        current_row -= 1
+                        if (current_row < 0):
+                            current_row = 0
+                        update_board(board, current_row, current_col)
 
                 last_a_two, last_b_two = a_two, b_two
 
             time.sleep(0.1)  # small delay to avoid hammering CPU
             if (state_changed):
                 os.system('clear')
-                print(board)
+                print_board(board)
 
     except KeyboardInterrupt:
         pass
