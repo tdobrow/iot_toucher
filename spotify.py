@@ -53,7 +53,9 @@ def main():
         client_id="b1b1446daf184504a6553cbd9cced3e9",
         client_secret="5fab21f6b7da48d9bfe4eb75fcb1e856",
         redirect_uri="http://127.0.0.1:8888/callback",
-        scope="user-modify-playback-state user-read-playback-state"
+        scope="user-modify-playback-state user-read-playback-state",
+        open_browser=False,
+        cache_path="/home/tom/Documents/iot_toucher/.cache"
     ))
 
     last_a_one, last_b_one = read_state(1)
