@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+
+imports ...
+GPIO setup ...
+
+def handle_incoming_message:
+	if client_id is mine:
+		blink_led(GREEN_LED_PIN)
+	else:
+		blink_led(WHITE_LED_PIN)
+
+
+def main():
+	try:
+		client = building_mqtt_client()
+		client.subscribe(callback=handle_incoming_message)
+
+		while True:
+			send_periodic_status_report
+
+			if GPIO.input(TOUCH_PIN):
+				client.publish(touch_event)
+
+	except Exception as e:
+		reset and reconnect client 

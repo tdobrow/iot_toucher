@@ -21,5 +21,5 @@ pip3 install --upgrade pip
 echo "Installing requirements.txt"
 pip3 install -r requirements.txt
 
-echo "Running main.py"
-python3 main.py
+echo "Running spotify.py"
+python3 spotify.py

@@ -37,7 +37,7 @@ def initialize_board(size):
     for i in range(size):
         board.append([])
         for _j in range(size):
-            board[i].append('o')
+            board[i].append('▓')
     
     board[0][0] = "X"
     return board
@@ -52,8 +52,7 @@ def update_board(board, size, current_row, current_col):
     return board
 
 def print_board(board):
-    for row in board:
-        print(row)
+    print("\n".join(" ".join(row) for row in board))
 
 def main():
     print("Polling first rotary on A={}, B={} (BCM). Ctrl+C to exit.".format(ROT_A_PIN, ROT_B_PIN))
