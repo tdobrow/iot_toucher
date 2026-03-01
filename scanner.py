@@ -59,25 +59,19 @@ def parse_platform_data(platform_data) -> dict:
     return result
 
 
-def decode_apple_payload(payload_hex: str) -> str:
-    if len(payload_hex) < 2:
-        return payload_hex
-    type_byte = int(payload_hex[:2], 16)
-    label = APPLE_PAYLOAD_TYPES.get(type_byte, f"type=0x{type_byte:02x}")
-    return f"{label} [{payload_hex}]"
-
-
-def format_manufacturer_data(raw: dict) -> str:
-    parts = []
+def get_manufacturer_type_labels(raw: dict) -> set[str]:
+    """Returns stable type labels like {'Apple: Find My', 'Apple: type=0x01'} — ignores rotating payload bytes."""
+    labels = set()
     for company_id_hex, payload_hex in raw.items():
         company_id = int(company_id_hex, 16)
         company_name = COMPANY_IDS.get(company_id, f"Unknown ({company_id_hex})")
-        if company_id == 0x004c:
-            payload_str = decode_apple_payload(payload_hex)
+        if company_id == 0x004c and len(payload_hex) >= 2:
+            type_byte = int(payload_hex[:2], 16)
+            type_label = APPLE_PAYLOAD_TYPES.get(type_byte, f"type=0x{type_byte:02x}")
+            labels.add(f"{company_name}: {type_label}")
         else:
-            payload_str = payload_hex
-        parts.append(f"{company_name}: {payload_str}")
-    return " | ".join(parts)
+            labels.add(company_name)
+    return labels
 
 
 def extract_info(device: BLEDevice, adv: AdvertisementData) -> dict:
@@ -86,7 +80,7 @@ def extract_info(device: BLEDevice, adv: AdvertisementData) -> dict:
         "name": device.name or adv.local_name or "",
         "rssi": adv.rssi,
         "tx_power": adv.tx_power or "",
-        "manufacturer": format_manufacturer_data(manufacturer_raw),
+        "_manufacturer_labels": get_manufacturer_type_labels(manufacturer_raw),
         "service_uuids": "; ".join(adv.service_uuids),
         "service_data": "; ".join(f"{k}={v.hex()}" for k, v in adv.service_data.items()),
         "connectable": "",
@@ -103,6 +97,8 @@ def load_csv() -> dict[str, dict]:
         return devices
     with open(CSV_FILE, newline="") as f:
         for row in csv.DictReader(f):
+            # Reconstruct the in-memory label set from the pipe-delimited CSV field
+            row["_manufacturer_labels"] = set(row.get("manufacturer", "").split(" | ")) - {""}
             devices[row["address"]] = row
     return devices
 
@@ -111,7 +107,11 @@ def write_csv(devices: dict[str, dict]):
     with open(CSV_FILE, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
-        writer.writerows(devices.values())
+        # Exclude in-memory-only fields (prefixed with _) when writing
+        writer.writerows(
+            {k: v for k, v in row.items() if not k.startswith("_")}
+            for row in devices.values()
+        )
 
 
 def print_summary(devices: dict[str, dict]):
@@ -129,7 +129,7 @@ def print_summary(devices: dict[str, dict]):
 
 
 seen_devices: dict[str, dict] = {}
-TRACKED_KEYS = {"name", "tx_power", "manufacturer", "service_uuids", "service_data", "connectable", "phy"}
+TRACKED_KEYS = {"name", "tx_power", "service_uuids", "service_data", "connectable", "phy"}
 
 
 def now_str() -> str:
@@ -142,10 +142,18 @@ def callback(device: BLEDevice, adv: AdvertisementData):
     timestamp = now_str()
 
     if address not in seen_devices:
-        row = {"address": address, "first_seen": timestamp, "last_updated": timestamp, **info}
+        manufacturer_labels = info["_manufacturer_labels"]
+        row = {
+            "address": address,
+            "first_seen": timestamp,
+            "last_updated": timestamp,
+            "manufacturer": " | ".join(sorted(manufacturer_labels)),
+            **{k: v for k, v in info.items() if not k.startswith("_")},
+            "_manufacturer_labels": manufacturer_labels,
+        }
         seen_devices[address] = row
         write_csv(seen_devices)
-        print(f"\n[{timestamp}] NEW  {address}  {info['name'] or 'unnamed'}  rssi={info['rssi']}  {info['manufacturer']}")
+        print(f"\n[{timestamp}] NEW  {address}  {info['name'] or 'unnamed'}  rssi={info['rssi']}  {row['manufacturer']}")
     else:
         prev = seen_devices[address]
         changes = {
@@ -153,8 +161,22 @@ def callback(device: BLEDevice, adv: AdvertisementData):
             for k in TRACKED_KEYS
             if info.get(k) not in (None, "", {}, []) and info.get(k) != prev.get(k)
         }
+
+        # Check for genuinely new manufacturer type labels
+        prev_labels = prev.get("_manufacturer_labels", set())
+        new_labels = info["_manufacturer_labels"] - prev_labels
+        if new_labels:
+            merged_labels = prev_labels | new_labels
+            changes["manufacturer"] = (prev.get("manufacturer"), " | ".join(sorted(merged_labels)))
+            prev["_manufacturer_labels"] = merged_labels
+            prev["manufacturer"] = " | ".join(sorted(merged_labels))
+
         if changes:
-            seen_devices[address].update({**info, "last_updated": timestamp})
+            seen_devices[address].update({
+                **{k: v for k, v in info.items() if not k.startswith("_")},
+                "last_updated": timestamp,
+                "manufacturer": prev["manufacturer"],
+            })
             write_csv(seen_devices)
             print(f"\n[{timestamp}] UPD  {address}  {info['name'] or 'unnamed'}")
             for key, (old, new) in changes.items():
