@@ -1,10 +1,18 @@
 import asyncio
+import csv
+import os
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from datetime import datetime, timedelta, timezone
 
-# A small table of common company IDs — extend as you like
+CSV_FILE = "data.csv"
+CSV_FIELDS = [
+    "address", "name", "rssi", "tx_power", "manufacturer",
+    "service_uuids", "service_data", "connectable", "phy",
+    "adv_timestamp", "first_seen", "last_updated",
+]
+
 COMPANY_IDS = {
     0x004c: "Apple",
     0x0006: "Microsoft",
@@ -15,32 +23,7 @@ COMPANY_IDS = {
     0x09C8: "XUNTONG (Flock Safety)",
 }
 
-# Apple's CoreBluetooth epoch starts Jan 1 2001
 APPLE_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
-
-def parse_platform_data(platform_data) -> dict:
-    if not platform_data or len(platform_data) < 2:
-        return {}
-    _, adv_dict, *_ = platform_data
-    result = {}
-    ts = adv_dict.get("kCBAdvDataTimestamp")
-    if ts:
-        dt = APPLE_EPOCH + timedelta(seconds=float(ts))
-        result["timestamp"] = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    if adv_dict.get("kCBAdvDataIsConnectable"):
-        result["connectable"] = True
-    phy = adv_dict.get("kCBAdvDataRxPrimaryPHY")
-    if phy:
-        result["phy"] = {1: "LE 1M", 2: "LE 2M", 3: "LE Coded", 129: "LE 1M (legacy)"}.get(phy, phy)
-    return result
-
-def format_manufacturer_data(raw: dict) -> dict:
-    out = {}
-    for company_id_hex, payload_hex in raw.items():
-        company_id = int(company_id_hex, 16)
-        company_name = COMPANY_IDS.get(company_id, f"Unknown ({company_id_hex})")
-        out[company_name] = decode_apple_payload(company_id, payload_hex)
-    return out
 
 APPLE_PAYLOAD_TYPES = {
     0x02: "iBeacon",
@@ -58,64 +41,141 @@ APPLE_PAYLOAD_TYPES = {
     0x12: "FindMy accessory",
 }
 
-def decode_apple_payload(company_id: int, payload_hex: str) -> str:
-    if company_id != 0x004c or len(payload_hex) < 2:
+
+def parse_platform_data(platform_data) -> dict:
+    if not platform_data or len(platform_data) < 2:
+        return {}
+    _, adv_dict, *_ = platform_data
+    result = {}
+    ts = adv_dict.get("kCBAdvDataTimestamp")
+    if ts:
+        dt = APPLE_EPOCH + timedelta(seconds=float(ts))
+        result["adv_timestamp"] = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    if adv_dict.get("kCBAdvDataIsConnectable"):
+        result["connectable"] = True
+    phy = adv_dict.get("kCBAdvDataRxPrimaryPHY")
+    if phy:
+        result["phy"] = {1: "LE 1M", 2: "LE 2M", 3: "LE Coded", 129: "LE 1M (legacy)"}.get(phy, phy)
+    return result
+
+
+def decode_apple_payload(payload_hex: str) -> str:
+    if len(payload_hex) < 2:
         return payload_hex
     type_byte = int(payload_hex[:2], 16)
     label = APPLE_PAYLOAD_TYPES.get(type_byte, f"type=0x{type_byte:02x}")
-    return f"{label}  [{payload_hex}]"
+    return f"{label} [{payload_hex}]"
+
+
+def format_manufacturer_data(raw: dict) -> str:
+    parts = []
+    for company_id_hex, payload_hex in raw.items():
+        company_id = int(company_id_hex, 16)
+        company_name = COMPANY_IDS.get(company_id, f"Unknown ({company_id_hex})")
+        if company_id == 0x004c:
+            payload_str = decode_apple_payload(payload_hex)
+        else:
+            payload_str = payload_hex
+        parts.append(f"{company_name}: {payload_str}")
+    return " | ".join(parts)
+
 
 def extract_info(device: BLEDevice, adv: AdvertisementData) -> dict:
-    return {
-        "name": device.name or adv.local_name,
+    manufacturer_raw = {hex(k): v.hex() for k, v in adv.manufacturer_data.items()}
+    info = {
+        "name": device.name or adv.local_name or "",
         "rssi": adv.rssi,
-        "tx_power": adv.tx_power,
-        "manufacturer": format_manufacturer_data(
-            {hex(k): v.hex() for k, v in adv.manufacturer_data.items()}
-        ),
-        "service_uuids": adv.service_uuids,
-        "service_data": {k: v.hex() for k, v in adv.service_data.items()},
-        **parse_platform_data(adv.platform_data),
+        "tx_power": adv.tx_power or "",
+        "manufacturer": format_manufacturer_data(manufacturer_raw),
+        "service_uuids": "; ".join(adv.service_uuids),
+        "service_data": "; ".join(f"{k}={v.hex()}" for k, v in adv.service_data.items()),
+        "connectable": "",
+        "phy": "",
+        "adv_timestamp": "",
     }
+    info.update(parse_platform_data(adv.platform_data))
+    return info
 
-def format_device(address: str, info: dict) -> str:
-    lines = [f"\n{'='*55}", f"  Address : {address}"]
-    for key, value in info.items():
-        if value not in (None, {}, [], ""):
-            lines.append(f"  {key:<22}: {value}")
-    lines.append(f"{'='*55}")
-    return "\n".join(lines)
+
+def load_csv() -> dict[str, dict]:
+    devices = {}
+    if not os.path.exists(CSV_FILE):
+        return devices
+    with open(CSV_FILE, newline="") as f:
+        for row in csv.DictReader(f):
+            devices[row["address"]] = row
+    return devices
+
+
+def write_csv(devices: dict[str, dict]):
+    with open(CSV_FILE, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        writer.writerows(devices.values())
+
+
+def print_summary(devices: dict[str, dict]):
+    now = datetime.now().strftime("%H:%M:%S")
+    print(f"\n{'='*60}")
+    print(f"  SUMMARY [{now}] — {len(devices)} devices tracked")
+    print(f"{'='*60}")
+    for address, row in devices.items():
+        name = row.get("name") or "unnamed"
+        rssi = row.get("rssi", "")
+        manufacturer = row.get("manufacturer", "")
+        last = row.get("last_updated", "")
+        print(f"  {address}  {name:<30}  rssi={rssi:<5}  {manufacturer[:40]:<40}  last={last}")
+    print(f"{'='*60}\n")
+
 
 seen_devices: dict[str, dict] = {}
-TRACKED_KEYS = {"name", "tx_power", "manufacturer", "service_uuids", "service_data"}
+TRACKED_KEYS = {"name", "tx_power", "manufacturer", "service_uuids", "service_data", "connectable", "phy"}
+
+
+def now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
 def callback(device: BLEDevice, adv: AdvertisementData):
     address = device.address
     info = extract_info(device, adv)
-    now = datetime.now().strftime("%H:%M:%S")
+    timestamp = now_str()
 
     if address not in seen_devices:
-        seen_devices[address] = info
-        print(f"\n[{now}] NEW DEVICE")
-        print(format_device(address, info))
+        row = {"address": address, "first_seen": timestamp, "last_updated": timestamp, **info}
+        seen_devices[address] = row
+        write_csv(seen_devices)
+        print(f"\n[{timestamp}] NEW  {address}  {info['name'] or 'unnamed'}  rssi={info['rssi']}  {info['manufacturer']}")
     else:
         prev = seen_devices[address]
         changes = {
             k: (prev.get(k), info[k])
             for k in TRACKED_KEYS
-            if info.get(k) not in (None, {}, [], "") and info.get(k) != prev.get(k)
+            if info.get(k) not in (None, "", {}, []) and info.get(k) != prev.get(k)
         }
         if changes:
-            seen_devices[address].update(info)
-            print(f"\n[{now}] UPDATE — {address} ({info['name'] or 'unnamed'})")
+            seen_devices[address].update({**info, "last_updated": timestamp})
+            write_csv(seen_devices)
+            print(f"\n[{timestamp}] UPD  {address}  {info['name'] or 'unnamed'}")
             for key, (old, new) in changes.items():
-                print(f"  {key:<22}: {old!r}")
-                print(f"  {'':22}→ {new!r}")
+                print(f"  {key:<22}: {old!r} → {new!r}")
+
+
+async def periodic_summary():
+    while True:
+        await asyncio.sleep(60)
+        print_summary(seen_devices)
+
 
 async def main():
+    global seen_devices
+    seen_devices = load_csv()
+    print(f"Loaded {len(seen_devices)} devices from {CSV_FILE}")
     print("Scanning for BLE devices... (Ctrl+C to stop)\n")
+
     async with BleakScanner(callback):
-        await asyncio.sleep(float("inf"))
+        await periodic_summary()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
