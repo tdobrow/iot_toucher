@@ -4,4 +4,4 @@ python-dotenv==1.0.1
 RPi.GPIO
 spotipy==2.25.2
 bleak
-asyncio==3.14.3
+asyncio
