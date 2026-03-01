@@ -3,3 +3,5 @@ awscrt==0.28.1
 python-dotenv==1.0.1
 RPi.GPIO
 spotipy==2.25.2
+bleak
+asynchio
