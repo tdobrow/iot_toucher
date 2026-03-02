@@ -136,7 +136,13 @@ def now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def is_apple(adv: AdvertisementData) -> bool:
+    return 0x004c in adv.manufacturer_data
+
+
 def callback(device: BLEDevice, adv: AdvertisementData):
+    if is_apple(adv):
+        return
     address = device.address
     info = extract_info(device, adv)
     timestamp = now_str()
